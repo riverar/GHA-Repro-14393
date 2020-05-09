@@ -1,0 +1,44 @@
+name: Repro-CI
+on:
+  push:
+    branches:
+      - master
+    paths-ignore:
+      - '**/*.md'
+env:
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  BUILD_CONFIGURATION: Release
+  BUILD_PLATFORM: x86
+  ARTIFACTS_BASE: '${{ github.workspace }}\artifacts'
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        
+      - name: Fetch all history for all tags and branches
+        run: git fetch --prune --unshallow
+        
+      - name: Install NuGet
+        uses: NuGet/setup-nuget@v1.0.2
+        with:
+          nuget-version: latest
+          
+      #- name: Workaround - Install Windows 10 14393 SDK
+      #  shell: powershell
+      #  run: |
+      #    Invoke-WebRequest -Method Get -Uri https://go.microsoft.com/fwlink/p/?LinkId=838916 -OutFile sdksetup.exe -UseBasicParsing
+      #    Start-Process -Wait sdksetup.exe -ArgumentList "/q", "/norestart", "/ceip off", "/features OptionId.WindowsSoftwareDevelopmentKit"
+
+      - name: Restore NuGet Packages
+        run: nuget restore GHA-Repro-14393.sln
+
+      - name: Set up MSBuild
+        uses: microsoft/setup-msbuild@v1
+          
+      - name: Build appinstaller/sideload package
+        shell: cmd
+        run: msbuild WapProjTemplate1\WapProjTemplate1.wapproj /p:Platform=%BUILD_PLATFORM% /p:Configuration=%BUILD_CONFIGURATION% /p:AppxBundle=Always /p:AppxPackageDir=%ARTIFACTS_BASE%\sideload\ /p:AppxPackageSigningEnabled=false /p:UapAppxPackageBuildMode=SideloadOnly /p:GenerateAppInstallerFile=true /p:AppxPackageTestDir=%ARTIFACTS_BASE%\sideload\ /p:AppInstallerUri="https://localhost" -maxcpucount
